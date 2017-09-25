@@ -25,6 +25,7 @@
                 var format = param[0];
                 //去掉首尾" '
                 format = format.substr(1,format.length-2);
+                
                 return DD.formatDate(value,format);
             },
             /**
@@ -122,7 +123,7 @@
              * @param   array       待过滤数组
              * @param   paramStr    参数串 如 range:1:5，参数之间以“:”分隔
              */
-            filter : function(array,pa){
+            select : function(array,pa){
                 var me = this;
                 if(!DD.isArray(array)){
                     throw DD.Error.handle('invoke1',DD.words.filter + ' filter',0,'array');
@@ -295,7 +296,10 @@
                 return;
             }
             var pa = param.split(':');
-            var type = pa[0].trim();
+            for(var i=0;i<pa.length;i++){
+                pa[i] = pa[i].trim();
+            }
+            var type = pa[0];
             
             //{}格式对象还原
             if(replaceArr.length>0){

@@ -157,6 +157,19 @@ var DD = {
     },
 
     /**
+     * 判断是否为number
+     */
+    isNumber:function(v){
+        return typeof v === 'number';
+    },
+
+    /**
+     * 判断是否为boolean
+     */
+    isBoolean:function(v){
+        return typeof v === 'boolean';
+    },
+    /**
      * 判断是否为字符串
      */
     isString: function(str){
@@ -545,14 +558,25 @@ var DD = {
         }
         if(value === undefined || value === null){
             if(DD.isObject(param)){ //设置多个属性
-            DD.getOwnProps(param).forEach(function(k){
-                    el.setAttribute(k,param[k]);
+                DD.getOwnProps(param).forEach(function(k){
+                    if(k === 'value'){
+                        el[k] = param[k];
+                    }else{
+                        el.setAttribute(k,param[k]);
+                    }
                 });
             }else if(DD.isString(param)){ //获取属性
+                if(param === 'value'){
+                    return param.value
+                }
                 return el.getAttribute(param);
             }
         }else { //设置属性
-            el.setAttribute(param,value);
+            if(param === 'value'){
+                    el[param] = value;
+            }else{
+                el.setAttribute(param,value);
+            }
         }
     },
     /**
@@ -569,10 +593,18 @@ var DD = {
         if(DD.isEmpty(name)){
             throw DD.Error.handle('invoke1','DD.css',1,'string','object');   
         }
-        var compStyle = document.defaultView.getComputedStyle(el,null);
+        var compStyle;
+        //ie 9+ firefox chrome safari
+        if(window.getComputedStyle){
+            compStyle = window.getComputedStyle(el,null);
+        }
+        if(!compStyle){
+            return;
+        }
+
         if(value === undefined || value === null){
             if(DD.isObject(name)){ //设置多个属性
-                Object.getOwnPropertyNames(name).forEach(function(k){
+                DD.getOwnProps(name).forEach(function(k){
                     if(DD.cssconfig !== undefined && DD.cssconfig[k] !== undefined){
                         //遍历属性名数组
                         DD.cssconfig[k].forEach(function(sn){
@@ -597,16 +629,44 @@ var DD = {
         }
     },
     /**
+     * 获取或设置宽度
+     * @param el        elment
+     * @param value     如果为false，则获取外部width(含padding)，否则获取内部width，如果为数字，则设置width + px
+     */
+    width:function(el,value){
+        if(!DD.isEl(el)){
+            throw DD.Error.handle('invoke','DD.width',0,'Element');
+        }
+        if(DD.isNumber(value)){
+            el.style.width = value + 'px';
+        }else{
+            var compStyle;
+            //ie 9+ firefox chrome safari
+            if(window.getComputedStyle){
+                compStyle = window.getComputedStyle(el,null);
+            }
+            if(!compStyle){
+                return null;
+            }
+            var w = parseInt(compStyle['width']);
+            if(value === true){
+                var pw = parseInt(compStyle['paddingLeft'])+parseInt(compStyle['paddingRight']);
+                w -= pw;    
+            }
+            return w;
+        }
+    },
+    /**
      * 添加class
      * @param el		element
      * @param cls	类名
      */
     addClass:function(el,cls){
         if(!DD.isEl(el)){
-            throw DD.Error.handle('invoke','DD.css',0,'Element');
+            throw DD.Error.handle('invoke','DD.addClass',0,'Element');
         }
         if(DD.isEmpty(cls)){
-            throw DD.Error.handle('invoke','DD.css',1,'string');   
+            throw DD.Error.handle('invoke','DD.addClass',1,'string');   
         }
 
 		var cn = el.className.trim();
@@ -632,10 +692,10 @@ var DD = {
      */
     removeClass:function(el,cls){
     	if(!DD.isEl(el)){
-            throw DD.Error.handle('invoke','DD.css',0,'Element');
+            throw DD.Error.handle('invoke','DD.removeClass',0,'Element');
         }
         if(DD.isEmpty(cls)){
-            throw DD.Error.handle('invoke','DD.css',1,'string');   
+            throw DD.Error.handle('invoke','DD.removeClass',1,'string');   
         }
 
 		var cn = el.className.trim();
@@ -662,12 +722,14 @@ var DD = {
     formatDate:function(srcDate,format){
         if(DD.isString(srcDate)){
             //排除日期格式串,只处理时间戳
-            if(srcDate.indexOf('/') !== -1 && srcDate.indexOf('-') !== -1 && srcDate.indexOf(':') !== -1){
+            var reg = new RegExp(/^\d+$/);
+            if(reg.exec(srcDate) !== null){
                 try{
                     srcDate = parseInt(srcDate);
                 }catch(e){}    
             }
         }
+            
         //得到日期
         var srcDate = new Date(srcDate);
         // invalid date
@@ -792,66 +854,35 @@ var DD = {
             }
         });  
         return obj;
-    }
-
-}
-/**
- * 网络服务库
- */
-
-DD.http = {
-    /**
-     * get方式请求资源
-     * @param config
-     *          url:   请求url,
-     *          params:请求对象
-     *          callback: 回调函数
-     *          timeout:  超时时间(毫秒)
-     * callback 传递参数 ERR-1 服务器无响应 ERR-2 超时无响应  ERR-3 服务器响应错误  其它:正常返回
-     */
-    get:function(config){
-
-
-    },
-
-    /**
-     * post方式获取资源
-     * @param config
-     *          url:   请求url,
-     *          params:请求对象
-     *          callback: 回调函数
-     *          timeout:  超时时间(毫秒)
-     * callback 传递参数 ERR-1 服务器无响应 ERR-2 超时无响应  ERR-3 服务器响应错误  其它:正常返回
-     */
-    post:function(config){
-
-    },
-    /**
-     * 异步加载资源(多个)资源
-     * 请求
-     */
-    load:function(config){
-		var me = this;
-		me.request(config);
     },
     /**
      * 请求
      * @param config
-     *          url:   		请求url,
-     *          reqType: 	请求类型 GET、POST
-     *          mime	:	 	mime 类型
-     *          params:		请求对象
+     *          url:         请求url,
+     *          reqType:     请求类型 GET、POST
+     *          type:        返回类型 json、js、text，默认text
+     *          async:       是否异步，默认true
+     *          mime:        mime 类型
+     *          params:      提交参数
      *          successFunc: 成功函数
      *          errorFunc:   失败函数
      *          timeoutFunc: 超时函数
-     *          timeout:  	超时时间(毫秒)
+     *          timeout:     超时时间(毫秒)
+     *          user:        用户名（跨域是使用）
+     *          pwd:         密码 （跨域是使用）
      * callback 传递参数 ERR-1 服务器无响应 ERR-2 超时无响应  ERR-3 服务器响应错误  其它:正常返回
      */
+    
     request:function(config){
         var req = new XMLHttpRequest();
         if(DD.isEmpty(config.url)){
-            throw DD.error.handle("load 参数错误");
+            throw DD.Error.handle('invoke','DD.request',"config.url",'string');
         }
+        if(config.params && !DD.isObject(config.params)){
+            throw DD.Error.handle('invoke','DD.request',"config.params",'object');
+        }
+        var async = config.async===false?false:true;
+        
         //设置mime
         var mime = config.type || 'text';
         switch(mime){
@@ -873,7 +904,6 @@ DD.http = {
 
         //网络请求时间
         req.timeout = config.timeout || 0;
-
         /**
          * 回调函数处理
          */
@@ -891,7 +921,7 @@ DD.http = {
                                 var script = DD.newEl('script');
                                 script.innerHTML = r;
                                 var head = DD.get('head');
-                                head.append(script);
+                                head.appendChild(script);
                                 script.innerHTML = '';
                                 // 保留script标签的path属性
                                 script.src = config.url;
@@ -920,41 +950,40 @@ DD.http = {
         }
 
         var reqType = config.reqType||'GET';
-        //参数
-        var pa=null;
-        if(DD.isObject(config.params)){
-        		var ar = [];
-        		Object.getOwnPropertyNames(config.params).forEach(function(key){
-        			ar.push(key + '=' + config.params[key]);
-        		});
-        		pa = ar.join('&');
-        }
-
         var url = config.url;
 
         //发送请求
         switch(reqType){
-
-        		case 'GET':
-        			if(pa !== null){
-        				if(url.indexOf('?') !== -1){
-        					url += '&' + pa;
-        				}else{
-        					url += '?' + pa;
-        				}
-        			}
-        			req.open(reqType,url,true);
-        			req.send(null);
-        			break;
-        		case 'POST':
-        			req.setRequestHeder("Content-Type","application/x-www-form-urlencoded;charset=UTF-8");
-        			req.open(reqType,url,true);
-        			req.send(pa);
-        			break;
+            case 'GET':
+                //参数
+                var pa;
+        
+                if(DD.isObject(config.params)){
+                    var ar = [];
+                    DD.getOwnProps(config.params).forEach(function(key){
+                        ar.push(key + '=' + config.params[key]);
+                    });
+                    pa = ar.join('&');
+                }
+                if(pa !== undefined){
+                    if(url.indexOf('?') !== -1){
+                        url += '&' + pa;
+                    }else{
+                        url += '?' + pa;
+                    }
+                }
+                req.open(reqType,url,async,config.user,config.pwd);
+                req.send(null);
+                break;
+            case 'POST':
+                var fd = new FormData();
+                for(var o in config.params){
+                    fd.append(o,config.params[o]);
+                }
+                req.open(reqType,url,async,config.user,config.pwd);
+                req.send(fd);
+                break;
         }
     }
-};
 
-
-
-
+}

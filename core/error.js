@@ -14,11 +14,12 @@ DD.Error = {
    
    handle:function(errname){
       var reg = new RegExp(/\{.+?\}/);
+      
       var msg = DD.ErrorMsgs[errname];
-        if(msg === undefined){
-          return "未知错误";
-        }
-        var args = [msg];
+      if(msg === undefined){
+        return "未知错误";
+      }
+      var args = [msg];
       for(var i=1;i<arguments.length;i++){
         args.push(arguments[i]);
       }

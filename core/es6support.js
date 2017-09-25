@@ -27,6 +27,5 @@ if (!Array.prototype.find) {
 	        return value;
 	      }
 	    }
-    	return undefined;
   	}
 };

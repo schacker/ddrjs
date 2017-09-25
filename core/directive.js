@@ -12,8 +12,9 @@
         me.directives = {
             model:{
                 preOrder:1,
-                once:true,
                 sys:true,
+                once:false,
+                init:initmodel,
                 handler:domodel
             },
             class:{
@@ -49,32 +50,10 @@
                 init:initshow,
                 handler:doshow
             },
-            /*输入框字段*/
             field:{
                 preOrder:5,
-                sys:true,
                 init:initfield,
-                handler:dofield
-            },
-            /*校验*/
-            validity:{
-                preOrder:5,
-                sys:true,
-                init:initvalidity,
-                handler:dovalidity
-            },
-            router:{
-                preOrder:5,
-                sys:true,
-                init:initrouter,
-                once:true
-            },
-            route:{
-                preOrder:5,
-                sys:true,
-                init:initroute,
-                handler:doroute,
-                once:true
+                handler:dofield        
             }
         }
     }
@@ -135,7 +114,6 @@
             });
         }
 
-
         //移除指令属性
         attrs.forEach(function(attr){
             view.removeAttribute(attr.name);
@@ -159,7 +137,6 @@
      */
     M.prototype.initViewDirective = function(view,directives){
         var me = this;
-        
         //指令排序
         if(directives.length > 1){
             directives.sort(function(a,b){
@@ -171,7 +148,6 @@
         }
         directives.forEach(function(d){
             var value = d.value;
-
             //如果存在此指令，需要删除
             if(view.$getDirective(d.name) !== undefined){
                 view.$removeDirective(d.name);
@@ -195,7 +171,6 @@
             var dname = item.name;
             var d = me.directives[dname];
             if(d !== undefined && DD.isFunction(d.handler)){
-                
                 d.handler.call(view,item);
                 //只执行一遍，则需要移除，记录删除指令位置
                 if(d.once === true){
@@ -206,22 +181,59 @@
         //移除只执行一次的命令
         if(removeArr.length > 0){
             for(var i=removeArr.length-1;i>=0;i--){
-                view.$directives.splice(i,1);
+                view.$directives.splice(removeArr[i],1);
             }
         }
     }
 
     /**
+     * 初始化model 指令
+     * @param value 属性值
+     */
+    function initmodel(value){
+        var me = this;
+        var pstr;
+        var model;
+        //获取祖先model str
+        for(var view=me.parentNode;view && view !== me.$module.view;view=view.parentNode){
+            if(view.$modelStr){
+                pstr = view.$modelStr;
+                if(view.$model){
+                    model = view.$model;
+                }
+                break;
+            }
+        }
+        if(!DD.isEmpty(value)){
+            if(pstr){
+                if(model && model.aliasName){
+                    if(value === model.aliasName){
+                        value = null;
+                    }else if(value.indexOf('.')!==-1){
+                        var arr = value.split('.');
+                        //去掉aliasName
+                        if(arr[0] === model.aliasName){
+                            arr.shift();
+                        }
+                        value = arr.join('.');
+                    }
+                }
+                
+            }
+        }
+        
+        me.$modelStr = value;
+    }
+    /**
      * 初始化repeat 指令
      * @param value 属性值
      */
     function initrepeat(value){
-        var view = this,
-            alias,      //别名
-            modelStr,   //模型串
-            modelName,  //模型名
-            filter;     //过滤器
-        var ind;
+        var view = this;
+        var alias;      //别名
+        var modelStr;   //模型串
+        var modelName;  //模型名
+        
         //in分隔
         var pa = value.split(' in ');
         pa[0] = pa[0].trim();
@@ -235,7 +247,7 @@
         }else{
             alias = pa[0];
         }
-
+        var filter,ind;
         modelStr = pa[1];
         if((ind=modelStr.indexOf('|')) !== -1){
             modelName = modelStr.substr(0,ind).trim();
@@ -244,21 +256,26 @@
             modelName = modelStr;
         }
         //增加x-model指令,放在repeat指令前
-        view.$directives.push({name:'model',value:modelName});
+        var mdir = {name:'model',value:modelName};
+        view.$directives.push(mdir);
+        //初始化model
+        initmodel.call(view,modelName);
+        
         //替换repeat指令
         var d = view.$getDirective('repeat');
-        d.value = modelName,
+        d.value = modelName;
         d.filter = filter;
         d.done = false;
-        //存储el
-        view.$savedDoms['repeat'] = view;
-        //存储each的别名
-
+        //存储别名
         view.$model.aliasName = alias;
         view.$model.indexName = indexName;
         //用占位符保留el占据的位置
         var tnode = document.createTextNode("");
         DD.replaceNode(view,tnode);
+        //存储el
+        tnode.$savedDoms['repeat'] = view;
+        //删除保存节点的repeat指令
+        view.$removeDirective('repeat');
     }
 
     /**
@@ -285,10 +302,8 @@
         //创建占位符
         var tnode = document.createTextNode("");
         DD.replaceNode(view,tnode);
-
         //移除if指令
         view.$removeDirective('if');
-
         // 保存saveDoms
         tnode.$savedDoms['if'] = arr;
     }
@@ -309,26 +324,21 @@
      */
     function initshow(value){
         var view = this;
-        view.$savedDoms['show'] = view;
+        //view.$savedDoms['show'] = view;
         var d = view.$getDirective('show');
         //处理表达式
         d.value = DD.Expression.initExpr("{{" + d.value + "}}");
-        
-        var tnode = document.createTextNode("");
-        DD.replaceNode(view,tnode);
-        view.$removeDirective('show');
     }
 
      /**
      * 初始化class 指令
      * @param directive 指令
      */
-    
     function initclass(value){
         var view = this;
         var d = view.$getDirective('class');
-        var obj = DD.parseJson(value);
-        
+        //转换为json数据
+        var obj = eval('(' + value + ')');
         if(!DD.isObject(obj)){
             return;
         }
@@ -348,16 +358,27 @@
     function initfield(){
         var view = this;
         var dv = view.$getDirective('field').value;
+        // 带过滤器情况
+        var ind,field;
+        if((ind=dv.indexOf('|')) !== -1){
+            field = dv.substr(0,ind);
+        }else{
+            field = dv;
+        }
         var tgname = view.tagName.toLowerCase();
         var eventName = 'input';
         if(tgname === 'input' && (view.type === 'checkbox' || view.type === 'radio')){
             eventName = 'change';
         }
+
+        //把字段名追加到value属性,radio有value，不能设置
+        if(view.type !== 'radio'){
+            view.$attrs['value']=DD.Expression.initExpr("{{" + dv+ "}}",view);
+        }
         new DD.Event({
             view:view,
             eventName:eventName,
-            handler:function(el,e){
-                var model = el.$getData();
+            handler:function(e,model,el){
                 //根据选中状态设置checkbox的value
                 if(el.type === 'checkbox'){
                     if(DD.attr(el,'yes-value') === el.value){
@@ -366,73 +387,31 @@
                         el.value = DD.attr(el,'yes-value');
                     }
                 }
-                model[dv] = el.value;
+                model.data[field] = el.value;
             }
         });
     }
-    
+
     /**
-     * 初始化valid指令
-     */
-    function initvalidity(value){
-        var view = this;
-        var node = view.previousElementSibling;
-        //找到对应字段进行处理，否则不进行处理，直接清空
-        if(value === node.$getDirective('field').value){
-            view.$validity = {field:node,tips:{}};
-            var nodes = view.children;
-            //异常消息
-            for(var i=0;i<nodes.length;i++){
-                var rel = nodes[i].getAttribute('rel');
-                view.$validity.tips[rel] = nodes[i];
-            }
-            view.$savedDoms['validity'] = view;
-            //清空
-            DD.empty(view);
-        }
-        //创建占位符
-        var tnode = document.createTextNode("");
-        DD.replaceNode(view,tnode);
-    }
-    
-    /**
-     * 初始化router 指令
-     */
-    function initrouter(){
-        if(DD.Router !== undefined){
-            DD.Router.initView(this);    
-        }
-    }
-   
-    /**
-     * 初始化route 指令
-     * @param value 属性值
-     */
-    function initroute(value){
-        if(!value){
-            return;
-        }
-        value = value.trim();
-        if(DD.isEmpty(value)){
-            return;
-        }
-        if(DD.Route !== undefined){
-            // 未解析的表达式，不处理
-            if(value && value.substr(0,2) === '{{' && value.substr(value.length-2,2) === '}}'){
-                return;
-            }
-            //设置path属性
-            DD.attr(this,'path',value);
-            DD.Route.initView(this);
-        }
-    }
-    /**
-     * 执行model指令，只执行一次
+     * 执行model指令
      * @param directive 指令
      */
     function domodel(directive){
         var view = this;
-        view.$getData();
+        view.$model = view.$getData();
+        delData(view);
+        //删除数据
+        function delData(nod){
+            for(var i=0;i<nod.childNodes.length;i++){
+                var n = nod.childNodes[i];
+                if(n.$isView && n.$hasDirective('model')){
+                    //删除数据
+                    delete n.$model.data;    
+                }
+                //递归更新modelstr和删除数据
+                delData(n); 
+            }
+        }
     }
 
     /**
@@ -444,95 +423,54 @@
         if(DD.isEmpty(directive)){
             directive = view.$getDirective('repeat');
         }
+        //清掉之前的数据
+        view.$model.data = null;
         var model = view.$getData();
         //如果没有数据，则不进行渲染
-        if(model === undefined || !DD.isArray(model) || model.length === 0){
+        if(model.data === undefined || !DD.isArray(model.data) || model.data.length === 0){
             return;
         }
         var subModels = [];
-        if(directive.filter !== undefined){
+        if(directive.filter){
             //有过滤器，处理数据集合
-            var dataArr = DD.Filter.handle(view.$module,model,directive.filter);
-            dataArr.forEach(function(item){
-                subModels.push(item);
-            });
+            subModels = DD.Filter.handle(view.$module,model.data,directive.filter);
         }else{
-            subModels = model;
+            subModels = model.data;
         }
-        
+
         //存储渲染过的element
         var renderedDoms = [];
         var bnode = view.nextElementSibling;
 
         while(bnode !== null && bnode.$fromNode === view){
-            renderedDoms.push({
-                node:bnode
-            });
+            renderedDoms.push(bnode);
             bnode = bnode.nextElementSibling;
         }
 
         var fnode = view;
         var needSort = false;
         var newDoms = [];
-        //如果新的数据模型和现在的dom 数据模型索引不同、新增dom、移除dom，都需要重新进行dom节点排序操作
-        subModels.forEach(function(m,ind){
-            //已绑定的node索引
-            var index = -1;
-            for(var i=0;i<renderedDoms.length;i++){
-                if(renderedDoms[i].node.$getData() === m){
-                    index=i;
-                    //设置新数组中的index
-                    renderedDoms[i].index = ind;
-                    //index 不同，需要重新排序
-                    if(i !== index){
-                        needSort  = true;
-                    }
-                    //该节点加入到新列表
-                    newDoms.push(renderedDoms[i].node);
-                    break;
-                }
-            }
-            
-
-            //数据未绑定
-            if(index === -1){
-                //克隆新节点
-                var nod = DD.cloneNode(view.$savedDoms['repeat']);
-                //移除无用指令
-                nod.$removeDirective('model');
-                nod.$removeDirective('repeat');
+        var fnode;
+        subModels.forEach(function(m,i){
+            var nod;
+            if(i<renderedDoms.length){
+                nod = renderedDoms[i];
+            }else{  //增加新的dom
+                nod = DD.cloneNode(view.$savedDoms['repeat']);
                 //保留fromnode，用于删除
                 nod.$fromNode = view;
-                nod.$model = {
-                    aliasName:view.$model.aliasName,
-                    indexName:view.$model.indexName,
-                    data:m
-                };
-                newDoms.push(nod);
-                needSort = true;
+                DD.insertAfter(nod,fnode);
             }
-
-        });
-        //移除新数组中不包含的dom
-        renderedDoms.forEach(function(node){
-            if(node.index === undefined){
-                DD.remove(node.node);   
+            nod.$modelStr = view.$modelStr;
+            fnode = nod;
+            nod.$model.data = m;
+            if(nod.$model.indexName){
+                nod.$model.data[nod.$model.indexName]=i;
             }
-            needSort = true;
         });
-
-        //排序
-        //添加或移动dom节点
-        if(needSort){
-            var fnode = view;
-            newDoms.forEach(function(node,ind){
-                //设置index
-                if(view.$model.indexName !== undefined){
-                    node.$getData().set(view.$model.indexName,ind);
-                }
-                DD.insertAfter(node,fnode);
-                fnode = node;
-            });    
+        //从已渲染列表移除多余的节点
+        for(var i=renderedDoms.length-1;i>=subModels.length;i--){
+            DD.remove(renderedDoms[i]);
         }
     }
 
@@ -545,7 +483,8 @@
         if(DD.isEmpty(directive)){
             directive = view.$getDirective('if');
         }
-        var r = DD.Expression.handle(view.$module,directive.value,[view.$getData(),view.$module.data],view.$model.aliasName);
+        var model = view.$getData();
+        var r = DD.Expression.handle(view.$module,directive.value,model);
         if(!r || r === "false"){
             r = false;
         }else{
@@ -566,6 +505,7 @@
             }
             node = view.$savedDoms['if'][1];
         }
+
         //保存if指令值
         directive.yes = r;
         //if节点渲染在view后，view是一个空的textnode
@@ -577,6 +517,7 @@
             //避免repeat清空，直接clonenode
             var n = DD.cloneNode(node);
             DD.insertAfter(n,view);
+            updModelStr(n);
             n.$fromNode = view;
         }
     }
@@ -598,7 +539,7 @@
         var obj = directive.value;
         DD.getOwnProps(obj).forEach(function(key){
             if(DD.isArray(obj[key])){
-                var r = DD.Expression.handle(view.$module,obj[key],[model,view.$module.data],view.$model.aliasName);
+                var r = DD.Expression.handle(view.$module,obj[key],model);
                 if(!r || r === "false"){
                     r = false;
                 }else{
@@ -622,31 +563,70 @@
         if(DD.isEmpty(directive)){
             directive = view.$getDirective('show');
         }
-        //执行表达式对象
-        var r = DD.Expression.handle(view.$module,directive.value,[view.$getData(),view.$module.data],view.$model.aliasName);
-        if(!r || r === "false"){
-            r = false;
+        if(directive.display === undefined){
+            setTimeout(function(){
+                var dip = DD.css(view,'display');
+                if(!dip || dip === 'none'){
+                    dip = 'block';
+                }
+                directive.display = dip;
+                render();       
+            },0);
         }else{
-            r = true;
+            render();
         }
-        if(r){
-            if(directive.yes === true){
-                return;
+        
+        function render(){
+            var model = view.$getData();
+            //执行表达式对象
+            var r = DD.Expression.handle(view.$module,directive.value,model);
+            if(!r || r === "false"){
+                r = false;
+            }else{
+                r = true;
             }
-            var node = DD.cloneNode(view.$savedDoms['show']);
-            DD.insertAfter(node,view);
-            node.$fromNode = view;
-        }else{
-            //if节点渲染在view后，view是一个空的textnode
-            if(view.nextSibling !== null && view.nextSibling.$fromNode === view){
-                DD.remove(view.nextSibling);
+            
+            if(r){
+                if(directive.yes === true){
+                    return;
+                }
+                DD.css(view,'display',directive.display);
+                updModelStr(view);
+            }else{
+                if(directive.yes === false){
+                    return;
+                }
+                DD.css(view,'display','none');
             }
+            directive.yes = r;    
+        }
+    }
 
-            if(directive.yes === false){
-                return;
+    /**
+     * 更新modelStr
+     * @param node      要更新的节点
+     * @param genFlag   
+     */
+    function updModelStr(node,genFlag){
+        var oldStr = node.$modelStr;
+        if(genFlag){ //子节点重新生成modelStr
+            if(node.$hasDirective('model')){
+                initmodel.call(node,node.$getDirective('model').value);
+            }
+        }else if(oldStr){
+            //更新modelStr中的index
+            var str='';
+            if(node.$model && node.$model.index>=0){
+                node.$modelStr += '[' + node.$model.index + ']';
+            }
+        }    
+        //操作子节点
+        for(var i=0;i<node.childNodes.length;i++){
+            var n = node.childNodes[i];
+            if(n.$isView){
+                updModelStr(n,true);
             }
         }
-        directive.yes = r;
     }
 
     /**
@@ -662,9 +642,9 @@
         }
             
         var model = view.$getData();
-        var v = model[directive.value];
+        var v = model.data[directive.value];
         if(tp === 'radio'){
-            var value = DD.attr(view,'value');
+            var value = view.value;
             if(v == value){
                 DD.attr(view,'checked','checked');
             }else{
@@ -673,6 +653,7 @@
         }else if(tp === 'checkbox'){
             //设置状态和value
             var yv = DD.attr(view,'yes-value'); 
+                
             if(v == yv){
                 DD.attr(view,'checked','checked');
                 view.value = yv;
@@ -688,89 +669,7 @@
         }
     }
 
-    /**
-     * valid指令执行
-     */
-    function dovalidity(directive){
-        var view = this;
-        if(DD.isEmpty(directive)){
-            directive = view.$getDirective('checked');
-        }
-        
-        if(!view.$validity || !view.$validity.field === undefined || !view.$validity.field.validity){
-            return;
-        }
-        //清除之前的校验提示
-        if(view.nextSibling.$fromNode === view){
-            DD.remove(view.nextSibling);
-        }
-        
-        var el = view.previousElementSibling;
-        var vn; //校验字段名
-        //校验出现异常
-        if(el !== null && !el.validity.valid){
-            var vld = el.validity;
-            
-            var validArr = [];
-            // 查找校验异常属性
-            for(var o in vld){
-                if(vld[o] === true) {
-                    validArr.push(o);
-                }
-            }
-            var vn = handle(validArr);
-            var tips = view.$validity.tips;
-            var node = view.$savedDoms['validity'].cloneNode(false);
-            node.$fromNode = view;
-            //用户定义的提示
-            if(DD.isEl(tips[vn])){
-                node.appendChild(tips[vn]);
-            }else{ //系统自带提示
-                var tn = document.createTextNode(DD.compileStr(DD.FormMsgs[vn],DD.attr(view.$validity.field,vn)));
-                node.appendChild(tn);
-            }
-            //插入到占位符后
-            DD.insertAfter(node,view);
-        }
-        function handle(arr){
-            for(var i=0;i<arr.length;i++){
-                switch(arr[i]){
-                    case 'valueMissing':
-                        return 'required';
-                    case 'typeMismatch':
-                        return 'type';
-                        break;
-                    case 'patternMismatch':
-                        break;
-                    case 'tooLong':
-                        return 'maxLength';
-                    case 'tooShort':
-                        return 'minLength';
-                    case 'rangeUnderflow':
-                        return 'min';
-                    case 'rangeOverflow':
-                        return 'max';
-                    case 'customError':
-                        return 'custom';    
-                }
-            }
-        }
-    }
 
-    /**
-     * valid指令执行
-     */
-    function doroute(directive){
-        var view = this;
-        
-        //根据默认属性触发路由
-        if(view.$routeConfig['active']){
-            var path = view.$routeConfig['path'];
-            setTimeout(function(){
-                view.$module.router.start(path,view,true);
-            },0);
-        }
-    }
     DD.Directive = new M();
     
     /**

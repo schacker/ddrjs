@@ -11,34 +11,34 @@
 (function(){	
 	var Renderer = function(){
 		var me = this;
-		me.waitList = []; 		//待渲染列表
-		me.rendering = false;	//正在渲染标志
+		me.waitList = []; 		 //待渲染列表
+		me.rendering = false;	 //正在渲染标志
+		me.currentModule = null; //当前module
 	}
 	Renderer.prototype = {
 		/**
 		 * 添加到渲染列表
+		 * @param module 			模块
 		 */
 		add:function(module){
 			var me = this;
-			var ind;
 			//如果已经在列表中，不再添加
-			if((ind = me.waitList.indexOf(module)) !== -1){
-				return;
-			}
-			//计算优先级
-			if(module.prop === undefined){
-				var prop = 1,pm=module.parent;
-				while(pm !== undefined){
-					prop++;
-					pm=pm.parent;
+			if(me.waitList.indexOf(module) === -1){
+				//计算优先级
+				if(module.prio === undefined){
+					var prio = 1,pm=module.parent;
+					while(pm !== undefined){
+						prio++;
+						pm=pm.parent;
+					}
 				}
+				module.prio=prio;
+				me.waitList.push(module);
+				//排序
+				me.waitList.sort(function(a,b){
+					return a.prio - b.prio;
+				});
 			}
-			module.prop=prop;
-			me.waitList.push(module);
-			//排序
-			me.waitList.sort(function(a,b){
-				return a.prop - b.prop;
-			});
 		},
 		//从列表移除
 		remove:function(module){
@@ -51,13 +51,17 @@
 			var me = this;
 			if(me.waitList.length === 0){
 				return;
-			}	
-			me.waitList.forEach(function(m,i){
-				//如果渲染成功，则从渲染队列删除
+			}
+
+			//调用队列渲染
+			for(var i=0;i<me.waitList.length;i++){
+				var m = me.waitList[i];
+				me.currentModule = m;
 				if(m.render()){
-					me.waitList.splice(i,1);
+					me.waitList.splice(i--,1);
 				}
-			});
+			}
+			
 		}
 	}
 

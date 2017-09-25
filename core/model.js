@@ -15,19 +15,19 @@
         var me = this;
         var data = param.data;
         me.$module = param.module;
+        me.$module.data = data;
         if(DD.isObject(data)){
             me.createObjectModel(data);
         }else if(DD.isArray(data)){
             me.createArrayModel(data);
         }
-        me.$module.data = data;
         return data;
     }
 
     //数据扩展方法
     var extendConfig = {
         $fields:{},
-        set:function(key,value){
+        $set:function(key,value){
             var me = this;
             //不包含此字段
             var arr = key.split('.');
@@ -66,12 +66,23 @@
          * @param fn    字段
          * @return      字段值
          */
-        get:function(fn){
+        $get:function(fn){
             var data = this;
             var fa = fn.split(".");
             for(var i=0;i<fa.length && data && data.$model;i++){
-                model = data.$model;
-                data = model.getProp(data,fa[i]);
+                //是数组
+                if(fa[i].lastIndexOf(']') === fa[i].length-1){
+                    var f = fa[i].split('[');
+                    data = data[f[0]];
+                    f.shift();
+                    //处理单重或多重数组
+                    f.forEach(function(istr){
+                        var ind = istr.substr(0,istr.length-1);
+                        data = data[parseInt(ind)];
+                    });
+                }else{
+                    data = data[fa[i]];    
+                }
             }
             return data;
         }
@@ -85,9 +96,14 @@
     M.prototype.setProp = function(data,prop,value){
         var me = this;
         //保存是否改变事件
-        var isChange = (data.$fields[prop] !== value);
+        var isChange = data.$fields[prop] !== value;
         //如果数据改变，则执行model change事件
-        if(isChange === true){
+        if(isChange){
+            if(DD.isObject(value)){
+                me.createObjectModel(value);
+            }else if(DD.isArray(value)){
+                me.createArrayModel(value);
+            }
             data.$fields[prop] = value;
             me.change();
         }
@@ -102,6 +118,9 @@
         return data.$fields[prop];
     }
 
+    /**
+     * change事件
+     */
     M.prototype.change = function(){
         DD.Renderer.add(this.$module);
     }
@@ -126,16 +145,15 @@
             } 
             if(DD.isArray(data[k])){
                 me.createArrayModel(data[k]);
-            }else{
-                Object.defineProperty(data,k,{
-                    set:function(v){
-                        me.setProp(data,k,v);
-                    },
-                    get:function(){
-                        return me.getProp(data,k);
-                    }
-                });    
             }
+            Object.defineProperty(data,k,{
+                set:function(v){
+                    me.setProp(data,k,v);
+                },
+                get:function(){
+                    return me.getProp(data,k);
+                }
+            });
             data[k] = v;
         });
     }

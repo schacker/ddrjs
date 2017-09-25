@@ -16,7 +16,8 @@ DD.words = {
 	filter:"过滤器",
 	data:"数据",
 	dataItem:'数据项',
-	route:'路由'
+	route:'路由',
+	routeView:'路由容器'
 }
 /*异常消息*/
 DD.ErrorMsgs = {
@@ -40,10 +41,6 @@ DD.FormMsgs = {
 	"type":"请输入有效的{0}",
 	"unknown":"输入错误",
 	"required":"不能为空",
-	"minLength":"输入长度最小为{0}",
-	"maxLength":"输入长度最大为{0}",
-	"betweenLength":"输入长度必须在{0}-{1}之间",
-	"min":"数字最小为{0}",
-	"max":"数字最大为{0}",
-	"between":"数字必需在{0}-{1}之间",
+	"min":"最小输入值为{0}",
+	"max":"最大输入值为{0}"
 }

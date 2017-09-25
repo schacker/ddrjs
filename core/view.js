@@ -1,6 +1,8 @@
 //扩展element方法
 DD.extendElementConfig = {
     $module:null,           //模块
+    $containModule:null,    //是否模块容器
+    $isRouterView:false,    //是否是router view
     $directives:[],         //指令集和
     $savedDoms:{},          //保存的dom集合
     $model:{},              //模型相关参数
@@ -8,7 +10,6 @@ DD.extendElementConfig = {
     $exprs:[],              //表达式数组
     $isView:true,           //view标志
     $events:{},             //事件集合
-    $validity:null,         //字段校验{field:字段对象,tips:提示element}
     $routeConfig:{},        //路由配置
     /**
      * 查找子节点
@@ -80,64 +81,48 @@ DD.extendElementConfig = {
      */
     $getData:function(){
         var me = this;
-            
         if(!me.$isView){
             return null;
         }
-        if(me.$model.data === undefined){
-            var model;
-            var data;
-            //根view
-            if(me.parentNode === null){
-                var data = me.$module.data;
-                if(me.$hasDirective('model')){
-                    data = data[me.$getDirective('model').value];    
+        //构建model串
+        var alias;          //别名
+        var indexName;      //索引名
+        var index;          //索引值
+        var data;           //数据
+        // 如果view自己有数据，则不再查找
+        if(me.$model && me.$model.data){
+            data=me.$model.data;
+            alias = me.$model.aliasName;
+            index = me.$model.index;
+        }else if(me.$module && me.$module.data){
+            var pmdlStr;
+            for(var view=me; view && view.$isView && view !== me.$module.view;view=view.parentNode){
+                //找到上一级model即可
+                if(view.$model && view.$model.data){
+                    index = view.$model.index;
+                    data = view.$model.data;
+                    alias = view.$model.aliasName;
+                    indexName = view.$model.indexName;
+                    break;
                 }
-                me.$model.data = data;
-            }else{  //其他view
-                if(me.parentNode !== null && me.parentNode.$isView){
-                    data = me.parentNode.$getData();
-                    model = me.parentNode.$model;
-                }
-                if(model !== undefined){
-                    //继承aliasName和indexName
-                    if(me.$model.aliasName === undefined){
-                        me.$model.aliasName = model.aliasName;
-                    }
-                    if(me.$model.indexName === undefined){
-                        me.$model.indexName = model.indexName;
-                    } 
+            }
 
-                    if(!DD.isEmpty(model.data)){
-                        if(me.$hasDirective('model')){
-                            var ind = 0;
-                            var mn = me.$getDirective('model').value;
-                            if(mn === model.aliasName){
-                                data = model.data;
-                            }else{
-                                //如果是parent aliasName开头，则从第二个开始往下找数据
-                                var fa = mn.split('.');
-                                if(model.aliasName === fa[0]){
-                                    if(fa.length>1){
-                                        ind=1;
-                                    }
-                                }
-                                data = model.data;
-                                //找到层级数据
-                                for(var i=ind;i<fa.length&&data!==undefined;i++){
-                                    try{
-                                        data = data[fa[i]];
-                                    }catch(e){
-
-                                    }
-                                }
-                            }
+            if(me.$modelStr){
+                if(data){ //如果父存在数据，则直接从父数据解析
+                    if(DD.isObject(data)){
+                        if(!DD.isEmpty(me.$modelStr)){
+                            data = data.$get(me.$modelStr);
                         }
-                    }   
-                }
-                me.$model.data = data;
+                    }
+                }else{
+                    data = me.$module.data.$get(me.$modelStr);    
+                } 
+            }
+            if(!data){
+                data = me.$module.data;
             }
         }
-        return me.$model.data;
+        // console.log(data);
+        return {data:data,aliasName:alias,indexName:indexName,index:index};
     }
 };
